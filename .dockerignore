@@ -1,0 +1,18 @@
+# Never send keys, private notes, or build junk into the build context.
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.vercel
+.vercelignore
+node_modules
+backend/node_modules
+dist
+learnings
+tests
+*.log
+docker-compose.yml
+Dockerfile
+docs
+screenshots
