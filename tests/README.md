@@ -6,6 +6,7 @@ bundled deterministic agents and the suite still asserts honest behavior.
 
 ```bash
 npm test
+npm run test:backend   # Temporal test-environment suites (backend/test/)
 ```
 
 ## What "satisfying" means here
@@ -21,7 +22,7 @@ Each file pins a contract that must hold after any change:
 | `unit/deepdive-agent.test.js` | Stage 8 always returns module notes + tests + pitfalls + next moves, and labels its mode honestly |
 | `unit/llm-chain.test.js` | With no keys, the 3-provider chain refuses (never fakes `ok: true`); cache is stable |
 | `unit/jobs.test.js` | Background job completes ALL stages to `done` in a real run, results carry every stage |
-| `integration/api.test.js` | Boots the real Express app over HTTP: health, meta (8 stages), sync plan, job start+poll, and the **429 rate limit** |
+| `integration/api.test.js` | Boots the real Express app over HTTP: health, meta (8 stages), workflow start (202 + workflowId) / 503-when-Temporal-down, workflow status, job start+poll, and the **429 rate limit** |
 
 ## Rules for the team
 
@@ -47,6 +48,9 @@ Each file pins a contract that must hold after any change:
 - **Jarvislabs owner** — acceptance = `.env` has a real key, Stage 8 shows
   `Jarvislabs · live` in a real run, model comparison (GLM vs DeepSeek vs Gemma)
   documented in notes; suite must still pass **without** the key.
-- Glue handoff: Jarvislabs key lands first → Temporal worker reuses the job
-  response contract → Kepler checks the deployed result. Order matters: each
-  handoff is testable only if the previous stage kept the suite green.
+Backend tests use Temporal's local test environment; they may download the
+Temporal test server on first run. They do not invoke Gemini, Groq, or GitHub.
+
+**Temporal owner note:** the job status shape in `unit/jobs.test.js` +
+`integration/api.test.js` is exactly what `backend/src/temporal/workflows.js`
+emits (mapped `completed → done`, `failed → error` by the frontend).

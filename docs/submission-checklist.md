@@ -15,8 +15,8 @@ Groq key to ride through it. Everything else is polish.
 | [ ] | **Fix model in `backend/.env`** (or root `.env`): `GEMINI_MODEL=gemini-3.6-flash` (or delete the line entirely to use the code default). | Configuration management | Without this the demo will show "Gemini · live" badges but fallback content | 2 |
 | [ ] | **Restart the backend** (`npm run server` from root) | Observability | Fresh process reads the updated `.env` at module load (`gemini.js:5`) | 1 |
 | [ ] | **Health check:** `curl http://localhost:3001/api/health` → `{"ok":true}` | Graceful degradation | Confirms Express is up before anything else | 1 |
-| [ ] | **POST /api/plan** (curl or UI) and confirm `mode = "llm"` for research/architecture/builder/brief | LLM-first / cache-aside pattern | Proves key is sent, model resolves, JSON parses | 5 |
-| [ ] | **POST /api/plan identical body again** → confirm `mode = "cached-llm"` | In-process caching | Avoids re-billing; deterministic within session | 1 |
+| [ ] | **Run a plan via UI (or `POST /api/jobs`)** and confirm `mode = "llm"` for research/architecture/builder/brief | LLM-first / cache-aside pattern | Proves key is sent, model resolves, JSON parses | 5 |
+| [ ] | **Run the identical body again (same backend process)** → confirm `mode = "cached-llm"` | In-process caching | Avoids re-billing; deterministic within session | 1 |
 | [ ] | **Verify idea-specific text:** research mentions your idea (not "Small, focused tools…"), architecture modules are idea-specific | Idea-specific LLM output | Validates prompt engineering actually works | 3 |
 | [ ] | **POST /api/export** with saved record → markdown contains tailored sections + Gemini footer | Structural integrity (brief model is single-source) | Export must match cards | 2 |
 | [ ] | **Review server stderr**, confirm no `[gemini]` error lines | Observability (logging) | Only "no key" → silent is OK; any 4xx/5xx = model/key problem | 2 |
@@ -38,7 +38,7 @@ Groq key to ride through it. Everything else is polish.
 | [ ] | **Negative test: no key** → remove key temporarily, restart, POST → deterministic, badges "fallback" | Fail-safe / graceful fallback | Critical to demo: "app always works" | 3 |
 | [ ] | **Reset back** to working model + key, restart, confirm "llm" again | Restore known-good state | Don't leave the app broken | 1 |
 | [ ] | **Verify history loads** an older saved project without re-running the pipeline | Client-side state | localStorage reads should not trigger API calls | 2 |
-| [ ] | **Edge case: minimal input** (idea only, blanks for everything) → all 7 stages return, no 500 | Input validation / robustness | A live demo may skip fields | 2 |
+| [ ] | **Edge case: minimal input** (idea only, blanks for everything) → all 8 stages return, no 500 | Input validation / robustness | A live demo may skip fields | 2 |
 | [ ] | **Edge case: long input** (~100 words in idea field) → still completes within ~15s | Performance / API latency | Gemini + 4 sequential calls adds up | 2 |
 | [ ] | **Check `node` logs** for any unhandled promise rejection / crash | Observability | Process must stay alive | 1 |
 | | | | **Phase 2 total** | **~28 min** |
@@ -143,7 +143,7 @@ git diff --staged -- '*.env*'   # must be empty (no .env staged)
 ### Elevator pitch
 
 > **AbridgeAI turns a rough idea into a build-ready plan in one run.** Describe
-> your project in plain English and a seven-stage pipeline scores its
+> your project in plain English and an eight-stage pipeline scores its
 > feasibility, scans market signals, designs an architecture, recommends a
 > stack, and generates a real starter scaffold with a README and a milestone
 > plan, all in seconds. It works with no API key at all because every AI stage
@@ -162,7 +162,7 @@ starter scaffold, and a week-by-week plan, instead of a blank screen.
 
 ### What it does
 
-AbridgeAI runs a **seven-stage deterministic planning pipeline** on your local
+AbridgeAI runs an **eight-stage deterministic planning pipeline** on your local
 backend:
 
 1. **Builder Signals** reads your public GitHub profile for signal (optional)
@@ -193,7 +193,7 @@ starter base.
 The backend is **Express + Node**, the frontend is **React + Vite**, and all
 planning logic lives server-side behind a typed stage registry (`stages.js`).
 The UI never rebuilds project logic; it just consumes structured results over
-HTTP. Four stages are **LLM-powered**: Gemini goes first, and if it's missing,
+HTTP. Five stages are **LLM-powered**: Gemini goes first (Jarvislabs leads the Stage-8 deep dive), and if it's missing,
 out of quota, or unparseable, **Groq** is tried automatically. If both fail, a
 deterministic engine takes over so the app never 500s. Badges in the UI tell
 you which path ran (`Gemini · live`, `Groq · live`, `LLM · cached`, or

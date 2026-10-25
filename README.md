@@ -55,6 +55,8 @@ Tech Stack Recommendation
 Builder Plan & Starter Scaffold
         ↓
 Complete Project Brief (exportable .md)
+        ↓
+Deep Dive — module notes, extra tests, pitfalls
 ```
 
 ---
@@ -68,12 +70,12 @@ Complete Project Brief (exportable .md)
 - **Builder profile** — personalizes recommendations based on public GitHub language signals
 - **Custom stack support** — enter any combination (e.g. `FastAPI + React + PostgreSQL`, or `cpp + python`); it's parsed into per-component layers, a matching starter base is chosen, and the scaffold README lists the exact toolchain (e.g. a C++/CMake note) each planned component needs
 - **Deadline-aware milestone plans** — plans are sized to your window: deadlines of ≤ 14 days produce Day-based milestones (Day 1 / Day 3 / Day 5…) and an effort estimate framed around that deadline, instead of always assuming weeks
-- **Provider-resilient LLM stages** — each LLM stage shows a badge for where its content came from: `Gemini · live`, `Groq · live`, `LLM · cached`, or `fallback`
+- **Provider-resilient LLM stages** — each LLM stage shows a badge for where its content came from: `Gemini · live`, `Groq · live`, `Jarvislabs · live`, `LLM · cached`, or `fallback`
 - **Architecture blueprint** — module breakdown and data-flow pattern
 - **Tech stack recommendation** — matched to your comfort level and project type
 - **Starter scaffold** — downloadable as a `.zip` with a project-specific `README.md` (idea, why, architecture diagram, stack rationale, dependencies, quick start) and a `PLAN.md` (feasibility summary and implementation milestones)
 - **Markdown export** — full project brief downloadable as `.md`
-- **LLM-Enhanced Research** — research, architecture, builder, and brief stages are boosted with idea-specific content from Gemini (`GEMINI_API_KEY`), backed up by Groq (`GROQ_API_KEY`) with automatic fallback, cached results, and live provider badges; the app always works even with no keys set.
+- **LLM-Enhanced Research** — research, architecture, builder, and brief stages are boosted with idea-specific content from Gemini (`GEMINI_API_KEY`), backed up by Groq (`GROQ_API_KEY`) with automatic fallback, cached results, and live provider badges; Stage 8 runs Jarvislabs-first (`JARVISLABS_API_KEY`); the app always works even with no keys set.
 - **Project history** — saved to localStorage, restorable, deletable
 - **Draft autosave** — form persists across reloads
 - **Light & dark themes** — respects system preference, stored across sessions
@@ -92,7 +94,7 @@ flowchart TD
     TS -->|"abridgeai-planning"| WORKER["Node Temporal worker"]
     WORKER --> WF["Deterministic 8-stage workflow"]
     WF -->|"one Activity per stage"| PIPE["Existing stage registry"]
-    PIPE --> LLM["Gemini → Groq → labelled deterministic fallback"]
+    PIPE --> LLM["Gemini → Groq → Jarvislabs → labelled fallback"]
     WF -->|"query progress + results"| API
     API --> UI
 ```
@@ -106,17 +108,18 @@ AbridgeAI/
 │   ├── src/
 │   │   ├── temporal/             # workflow, activities, client and configuration
 │   │   ├── pipeline/
-│   │   │   ├── stages.js         # Single source of truth for the 7 stages
+│   │   │   ├── stages.js         # Single source of truth for the 8 stages
 │   │   │   ├── context.js        # Typed pipeline context { input, results, errors }
 │   │   │   └── runPipeline.js    # Generic loop over the stage registry
-│   │   ├── agents/               # 7 stage functions (run(ctx) → structured outputs)
+│   │   ├── agents/               # 8 stage functions (run(ctx) → structured outputs)
 │   │   │   ├── githubAgent.js
 │   │   │   ├── researchAgent.js  # Gemini-first → Groq → deterministic fallback
 │   │   │   ├── feasibilityAgent.js
 │   │   │   ├── architectureAgent.js
 │   │   │   ├── techStackAgent.js
 │   │   │   ├── builderAgent.js
-│   │   │   └── briefAgent.js     # thin wrapper over brief/model + render
+│   │   │   ├── briefAgent.js     # thin wrapper over brief/model + render
+│   │   │   └── deepDiveAgent.js  # Jarvislabs-first handover notes + tests + pitfalls
 │   │   ├── brief/
 │   │   │   ├── model.js          # Canonical brief model (single source)
 │   │   │   └── render.js         # renderText() + renderMarkdown()
@@ -129,12 +132,15 @@ AbridgeAI/
 │   │   ├── scaffold/             # Starter generators + file tree
 │   │   ├── services/
 │   │   │   ├── github.js         # GitHub API fetch + sample fallback
-│   │   │   ├── llm.js            # LLM orchestrator: Gemini → Groq → deterministic
+│   │   │   ├── llm.js            # LLM orchestrator: Gemini → Groq → Jarvislabs → deterministic
 │   │   │   ├── gemini.js         # Gemini client with bounded request timeout
 │   │   │   ├── groq.js           # Groq client with bounded request timeout
-│   │   │   ├── jarvislabs.js         # Jarvislabs Token Factory client (Stage 8 + chain)
-│   │   │   └── utils/fetchTimeout.js # Shared timeouts: LLM 20s, GitHub 10s
-│   │   ├── utils/hash.js         # Deterministic hash + seeded pick
+│   │   │   ├── jarvislabs.js     # Jarvislabs Token Factory client (Stage 8 + chain)
+│   │   │   └── ...
+│   │   ├── utils/
+│   │   │   ├── fetchTimeout.js   # Shared timeouts: LLM 20s, GitHub 10s
+│   │   │   └── hash.js           # Deterministic hash + seeded pick
+│   │   ├── jobs.js               # In-process background job runner (Temporal fallback)
 │   │   └── export/markdown.js    # Markdown brief builder (legacy-safe)
 │   └── package.json              # Express and Temporal SDK dependencies
 │
@@ -306,6 +312,8 @@ commit `.env` — it's gitignored):
 | `GEMINI_MODEL`     | optional  | `gemini-3.6-flash`               |
 | `GROQ_API_KEY`     | optional  | `gsk_…` (from console.groq.com)  |
 | `GROQ_MODEL`       | optional  | `openai/gpt-oss-120b`            |
+| `JARVISLABS_API_KEY` | optional | Token from jarvislabs.ai (Stage 8 + chain tail) |
+| `JARVISLABS_MODEL` | optional  | `glm-5.3` |
 | `TEMPORAL_ADDRESS` | optional locally; required for remote service | Temporal gRPC address |
 | `TEMPORAL_NAMESPACE` | optional locally; required for remote service | `default` locally |
 | `TEMPORAL_TASK_QUEUE` | optional locally; must match worker | `abridgeai-planning` locally |
@@ -314,8 +322,10 @@ commit `.env` — it's gitignored):
 | `LLM_TIMEOUT_MS` / `GITHUB_TIMEOUT_MS` | optional | `20000` / `10000` |
 
 Without a key the app runs fully deterministically (every badge shows
-`fallback`). A Temporal service and a compatible worker are still required to
-start and execute planning workflows.
+`fallback`). With a long-lived server (`npm run server`), a run can also fall
+back to the in-process job runner when Temporal is unreachable; Vercel
+serverless still needs a reachable Temporal service and a compatible worker to
+execute planning workflows.
 
 ### Deploy steps
 
@@ -338,15 +348,18 @@ with idea-specific content from Google's Gemini when a key is configured. If
 Gemini is missing, unparsable, or out of quota (the free tier allows ~20
 requests/day on `gemini-3.6-flash`), the fallback provider **Groq** (an
 OpenAI-compatible endpoint on fast inference hardware) steps in; if that also
-fails, the stage falls back to the deterministic agents. Every other stage
-stays deterministic.
+fails, the stage falls back to the deterministic agents. **Stage 8 (Deep Dive)**
+is different on purpose: it calls **Jarvislabs Token Factory** directly first
+(open long-form models under your `JARVISLABS_API_KEY`), then the ordinary
+chain, then deterministic fallback. Every other stage stays deterministic.
 
 **To enable it:**
 
-1. Get a Gemini key at https://aistudio.google.com (primary).
+1. Get a Gemini key at https://aistudio.google.com (primary for stages 2, 4, 6, 7).
 2. Get a Groq key at https://console.groq.com (fallback — helps when Gemini hits its daily quota).
-3. `copy .env.example .env` and set `GEMINI_API_KEY=...` (and `GROQ_API_KEY=...`).
-4. Restart the API and worker (`npm run server`, `npm run worker`)
+3. Get a Jarvislabs token at https://jarvislabs.ai (deep dive — Stage 8's preferred provider).
+4. `Copy-Item .env.example .env` and set `GEMINI_API_KEY=...` (and `GROQ_API_KEY=...`, `JARVISLABS_API_KEY=...`).
+5. Restart the API and worker (`npm run server`, `npm run worker`)
 
 - Prompts live in `backend/src/prompts/prompts.js` — each defines the strict
   JSON shape the stage expects, so output is concrete and idea-specific.
@@ -386,6 +399,7 @@ AbridgeAI uses `localStorage` for:
 | `abridgeai.history.v1` | Saved project runs (up to 12) |
 | `abridgeai.draft.v1` | Form draft autosave |
 | `abridgeai.theme.v1` | Light/dark theme preference |
+| `abridgeai.last-workflow.v1` | Latest Temporal workflow id + input, for reconnecting after a refresh |
 
 Clearing browser data for the site resets everything.
 
@@ -395,7 +409,7 @@ Clearing browser data for the site resets everything.
 
 - **Feature depth, not production-grade** — the generated scaffold is a starting point that needs real implementation, and the feasibility score is a planning heuristic, not a scientific measurement.
 - **GitHub signal is directional** — the builder profile uses public-repo language tallies as a rough guide, not a skill assessment.
-- **LLM content depends on the provider** — add `GEMINI_API_KEY` / `GROQ_API_KEY` for idea-specific text; without keys the app still runs fully deterministic.
+- **LLM content depends on the provider** — add `GEMINI_API_KEY` / `GROQ_API_KEY` / `JARVISLABS_API_KEY` for idea-specific text; without keys the app still runs fully deterministic.
 
 ---
 
