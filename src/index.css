@@ -327,6 +327,11 @@ h1 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spac
 .tl-row.is-running .tl-node { border-color: var(--lime); background: var(--card-bg); }
 .tl-row.is-running .tl-node .tl-pulse-ring { animation: tl-ring 1.5s ease-out infinite; }
 
+.tl-row.is-error .tl-node { background: var(--danger); border-color: var(--danger); }
+.tl-row.is-error:not(:last-child)::before { background: var(--danger); }
+.tl-row.is-error .tl-name { color: var(--danger); }
+.tl-row.is-error .tl-status { color: var(--danger); cursor: help; }
+
 .tl-name { font-size: 13.5px; font-weight: 600; color: var(--ink-soft); flex: 1; }
 .tl-row.is-done .tl-name, .tl-row.is-running .tl-name { color: var(--ink); }
 

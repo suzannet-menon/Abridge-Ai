@@ -11,7 +11,7 @@ import BuilderCard from './components/BuilderCard.jsx';
 import BriefCard from './components/BriefCard.jsx';
 import Toast from './components/Toast.jsx';
 
-import { runPlan, exportBrief } from './api/client.js';
+import { startJob, pollJob, runPlan, exportBrief } from './api/client.js';
 
 import {
   readHistory, saveToHistory, deleteFromHistory, clearHistory,
@@ -20,11 +20,12 @@ import {
 } from './utils/storage.js';
 import { downloadFile } from './utils/export.js';
 
-const STAGE_KEYS = ['github', 'research', 'feasibility', 'architecture', 'stack', 'builder', 'brief'];
+const STAGE_KEYS = ['github', 'research', 'feasibility', 'architecture', 'stack', 'builder', 'brief', 'deepdive'];
 
 function modeBadge(mode) {
   if (mode === 'llm') return 'Gemini · live';
   if (mode === 'groq') return 'Groq · live';
+  if (mode === 'jarvislabs') return 'Jarvislabs · live';
   if (mode === 'cached-llm') return 'LLM · cached';
   if (mode === 'deterministic') return 'fallback';
   return undefined;
@@ -43,6 +44,7 @@ export default function App() {
   const [pipelineState, setPipelineState] = useState('standby');
   const [statuses, setStatuses] = useState({});
   const [results, setResults] = useState(null);
+  const [stageErrors, setStageErrors] = useState({});
 
   // Form restore
   const [restoreData, setRestoreData] = useState(() => readDraft());
@@ -84,24 +86,54 @@ export default function App() {
   const resetPipeline = () => {
     setStatuses({});
     setResults(null);
+    setStageErrors({});
     setPipelineState('standby');
   };
 
-  // ── Pipeline runner (orchestrated by the backend) ───────────
+  // ── Pipeline runner ──────────────────────────────────────────
+  // Preferred path: background job with real per-stage progress. If the
+  // job endpoint is unreachable/not available, fall back to the
+  // synchronous run and reveal stages in order.
   const runPipeline = async (input) => {
     if (running) return;
     setRunning(true);
     setResults(null);
     setStatuses({});
+    setStageErrors({});
     setPipelineState('running');
     setView('overview');
 
     try {
-      const { results: newResults } = await runPlan(input);
+      let newResults;
+      let newStageErrors;
+      try {
+        const job = await startJob(input);
+        const finished = await pollJob(job.id, j => {
+          if (j.stages) setStatuses({ ...j.stages });
+        });
+        newResults = finished.results;
+        newStageErrors = finished.errors || {};
+      } catch (jobErr) {
+        // Backend without job support (or a hiccup while starting/polling):
+        // fall back to the one-shot synchronous run with staged reveal.
+        // A genuine timeout must NOT be retried in sync mode.
+        if (jobErr.message.code === 'TIMEOUT' || jobErr.message.includes('timed out')) throw jobErr;
+        ({ results: newResults, errors: newStageErrors } = await runPlan(input));
+        STAGE_KEYS.forEach((key, i) => {
+          setTimeout(() => {
+            setStatuses(prev => ({ ...prev, [key]: newStageErrors?.[key] ? 'error' : 'done' }));
+          }, i * 140);
+        });
+      }
 
-      // Reveal completed stages in order so the timeline reads naturally.
-      STAGE_KEYS.forEach((key, i) => {
-        setTimeout(() => setStatuses(prev => ({ ...prev, [key]: 'done' })), i * 140);
+      setResults(newResults);
+      setStageErrors(newStageErrors || {});
+      setStatuses(prev => {
+        const next = { ...prev };
+        STAGE_KEYS.forEach(key => {
+          next[key] = newStageErrors?.[key] ? 'error' : (next[key] === 'queued' ? 'done' : next[key]);
+        });
+        return next;
       });
       setPipelineState('complete');
       setResults(newResults);
@@ -149,7 +181,7 @@ export default function App() {
     // normalize() in readHistory has already ensured the record is in the
     // current schema (e.g. feasibility.axes is present). No agent re-run needed.
     setResults(item.outputs);
-    setStatuses({ github: 'done', research: 'done', feasibility: 'done', architecture: 'done', stack: 'done', builder: 'done', brief: 'done' });
+    setStatuses({ github: 'done', research: 'done', feasibility: 'done', architecture: 'done', stack: 'done', builder: 'done', brief: 'done', deepdive: 'done' });
     setPipelineState('complete');
     setView('overview');
     showToast('Loaded saved project outputs.');
@@ -269,6 +301,7 @@ export default function App() {
                   statuses={statuses}
                   feasibility={results?.feasibility}
                   pipelineState={pipelineState}
+                  stageErrors={stageErrors}
                 />
               </div>
 
@@ -297,6 +330,9 @@ export default function App() {
                       body={results.stack?.text ?? results.stack} copyable={results.stack?.text ?? results.stack} onToast={showToast} />
                     <BuilderCard builder={results.builder} onToast={showToast} />
                     <BriefCard brief={results.brief} onToast={showToast} />
+                    <OutputCard index={8} title="Deep Dive (module notes · extra tests)" agent="deepdive"
+                      body={results.deepdive?.text} copyable={results.deepdive?.text}
+                      badge={modeBadge(results.deepdive?.mode)} onToast={showToast} />
                   </div>
                 </section>
               )}

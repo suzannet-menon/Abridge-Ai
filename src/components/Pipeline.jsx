@@ -14,7 +14,7 @@ const FALLBACK_STAGES = [
   { key: 'brief', label: 'Project Brief', nextHint: 'Planning complete — download the scaffold or export the project brief.' },
 ];
 
-export default function Pipeline({ statuses, feasibility, pipelineState }) {
+export default function Pipeline({ statuses, feasibility, pipelineState, stageErrors }) {
   const [stages, setStages] = useState(FALLBACK_STAGES);
   const [hints, setHints] = useState(
     Object.fromEntries(FALLBACK_STAGES.map(s => [s.key, s.nextHint])),
@@ -48,8 +48,14 @@ export default function Pipeline({ statuses, feasibility, pipelineState }) {
         <ol className="timeline" id="pipeline">
           {stages.map(stage => {
             const state = statuses[stage.key] || 'queued';
+            const errMsg = stageErrors?.[stage.key];
             return (
-              <li key={stage.key} className={`tl-row${state === 'running' ? ' is-running' : state === 'done' ? ' is-done' : ''}`} data-step={stage.key}>
+              <li
+                key={stage.key}
+                className={`tl-row${state === 'running' ? ' is-running' : state === 'done' ? ' is-done' : state === 'error' ? ' is-error' : ''}`}
+                data-step={stage.key}
+                title={errMsg ? `${stage.label} failed: ${errMsg}` : undefined}
+              >
                 <span className="tl-node">
                   <svg viewBox="0 0 12 12" aria-hidden="true">
                     <path d="M2 6l3 3 5-6" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -62,7 +68,7 @@ export default function Pipeline({ statuses, feasibility, pipelineState }) {
                 </span>
                 <span className="tl-name">{stage.label}</span>
                 <span className="tl-status">
-                  {state === 'running' ? 'in progress' : state === 'done' ? 'completed' : 'pending'}
+                  {state === 'running' ? 'in progress' : state === 'done' ? 'completed' : state === 'error' ? 'failed' : 'pending'}
                 </span>
               </li>
             );

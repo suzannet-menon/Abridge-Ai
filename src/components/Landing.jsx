@@ -8,6 +8,7 @@ const STEPS = [
   { key: 'stack',        index: '05', name: 'Tech Stack Recommendation', desc: 'A stack recommendation — TypeScript, Python, Go, Rust, or your custom combination — matched to your comfort level.' },
   { key: 'builder',      index: '06', name: 'Builder Plan & Scaffold',   desc: 'A starter file tree, starter files, and a milestone checklist — download it as a real, unzippable project.' },
   { key: 'brief',        index: '07', name: 'Implementation Plan',       desc: 'Assembles a complete, build-ready implementation plan with next steps, MVP guidance, and milestone targets.' },
+  { key: 'deepdive',     index: '08', name: 'Deep Dive',                desc: 'Module notes, extra test cases, and pitfalls — the pre-build read that keeps the build honest. Optional, Jarvislabs-first.' },
 ];
 
 const DEMO_SCORE = 82;
@@ -84,12 +85,12 @@ export default function Landing({ onEnter }) {
           <p className="l-sub l-fade-in l-delay-1">
             AbridgeAI runs a deterministic planning pipeline on your idea — a feasibility score,
             an architecture blueprint, a downloadable starter scaffold, and a complete
-            implementation plan. Nothing leaves your browser.
+            implementation plan. LLM calls are optional enrichment; the core plan stands on its own.
           </p>
           <div className="l-badges l-fade-in l-delay-2">
             <span className="l-badge"><span className="l-badge-dot" aria-hidden="true" />Feasibility scored /100</span>
             <span className="l-badge"><span className="l-badge-dot" aria-hidden="true" />Scaffold downloads as .zip</span>
-            <span className="l-badge"><span className="l-badge-dot" aria-hidden="true" />Zero external AI calls</span>
+            <span className="l-badge"><span className="l-badge-dot" aria-hidden="true" />Works even offline-free fallbacks</span>
             <span className="l-badge"><span className="l-badge-dot" aria-hidden="true" />Custom stack support</span>
           </div>
         </section>
@@ -151,8 +152,8 @@ export default function Landing({ onEnter }) {
         {/* How it works */}
         <section className="l-how">
           <div className="l-how-head">
-            <h2>Seven stages, one run</h2>
-            <p>Watch the preview above — this is the same pipeline that runs in your browser.</p>
+            <h2>Eight stages, one run</h2>
+            <p>Watch the preview above — the real pipeline runs in the app, stage by stage, with honest fallbacks.</p>
           </div>
           <ol className="l-steps" ref={stepsRef}>
             {STEPS.map(step => (
