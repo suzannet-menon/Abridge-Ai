@@ -1,8 +1,10 @@
+import { fetchWithTimeout } from '../utils/fetchTimeout.js';
+
 const API_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-// Model names drift; a valid key is never sent unless an explicit model is
-// chosen, so the endpoint carries the key as the standard query parameter.
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(API_KEY)}`;
+// The key travels in the x-goog-api-key header, never the URL, so it can't
+// leak into proxy/server logs.
+const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 function parseJson(raw) {
   if (!raw) return null;
@@ -23,9 +25,12 @@ export async function runGeminiStage(prompt) {
   if (!API_KEY) return { ok: false, data: null, error: 'no GEMINI_API_KEY' };
 
   try {
-    const res = await fetch(ENDPOINT, {
+    const res = await fetchWithTimeout(ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': API_KEY,
+      },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
@@ -48,6 +53,6 @@ export async function runGeminiStage(prompt) {
     return { ok: true, data: parsed, error: null };
   } catch (err) {
     console.error('[gemini] request failed:', err);
-    return { ok: false, data: null, error: 'gemini request failed' };
+    return { ok: false, data: null, error: err?.name === 'AbortError' ? 'gemini timed out' : 'gemini request failed' };
   }
 }

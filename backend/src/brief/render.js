@@ -71,6 +71,7 @@ export function renderMarkdown(brief, record) {
     ['5. Tech Stack Recommendation',         pickText(outputs.stack)],
     ['6. Builder Plan & Starter Scaffold',   pickText(outputs.builder)],
     ['7. Implementation Plan',               pickText(outputs.brief)],
+    ['8. Deep Dive — Module Notes, Extra Tests, Pitfalls', pickText(outputs.deepdive)],
   ];
 
   sections.forEach(([title, body]) => {

@@ -1,6 +1,7 @@
 import { hash } from '../utils/hash.js';
 import { runGeminiStage } from './gemini.js';
 import { runGroqStage } from './groq.js';
+import { runJarvislabsStage } from './jarvislabs.js';
 
 // In-process cache keyed by a stage seed so identical inputs are never
 // re-billed and repeat runs stay deterministic for the same cache lifetime.
@@ -10,19 +11,20 @@ const cache = new Map();
  * Modes explain where a stage's content came from, so the UI can label it:
  * - 'llm'           fresh Gemini generation for this input
  * - 'groq'          fresh Groq generation — Gemini failed or absent
+ * - 'jarvislabs'    fresh Jarvislabs (Token Factory) generation — earlier links failed
  * - 'cached-llm'    result reused from this process's cache
- * - 'deterministic' both providers failed → bundled agent
+ * - 'deterministic' all providers failed → bundled agent
  */
-export const MODE = { LLM: 'llm', GROQ: 'groq', CACHED: 'cached-llm', DETERMINISTIC: 'deterministic' };
+export const MODE = { LLM: 'llm', GROQ: 'groq', JARVISLABS: 'jarvislabs', CACHED: 'cached-llm', DETERMINISTIC: 'deterministic' };
 
 function fail() {
   return { ok: false, data: null, mode: MODE.DETERMINISTIC };
 }
 
 /**
- * Provider-first stage runner: Gemini → Groq → deterministic fallback.
+ * Provider-first stage runner: Gemini → Groq → Jarvislabs → deterministic fallback.
  * Returns
- *   { ok: true,  data: <parsed JSON>, mode: 'llm' | 'groq' | 'cached-llm' }
+ *   { ok: true,  data: <parsed JSON>, mode: 'llm' | 'groq' | 'jarvislabs' | 'cached-llm' }
  *   { ok: false, data: null,          mode: 'deterministic' }
  * Callers fall back to their bundled deterministic logic when ok is false.
  */
@@ -46,7 +48,14 @@ export async function runLLMStage(seedKey, prompt) {
   }
   reasons.push(groq.error);
 
-  console.warn(`[llm] both providers failed (${String(seedKey).slice(0, 48)}): ${reasons.join(' | ')}`);
+  const jarvislabs = await runJarvislabsStage(prompt);
+  if (jarvislabs.ok) {
+    cache.set(seed, jarvislabs.data);
+    return { ok: true, data: jarvislabs.data, mode: MODE.JARVISLABS };
+  }
+  reasons.push(jarvislabs.error);
+
+  console.warn(`[llm] all providers failed (${String(seedKey).slice(0, 48)}): ${reasons.join(' | ')}`);
   return fail();
 }
 

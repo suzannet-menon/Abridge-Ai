@@ -147,5 +147,38 @@ Rules:
 - Never mention "this plan was generated deterministically".`;
 }
 
-/** Legacy alias so existing imports keep working during migration. */
-export const buildResearchPromptLegacy = buildResearchPrompt;
+/** Deep-dive stage prompt: explains every module and proposes extra tests for THIS project. */
+export function buildDeepDivePrompt(ctx) {
+  const input = ctx?.input || {};
+  const r = ctx?.results || {};
+  const stackLabel = r.stack?.label || input.customStack || '—';
+  const modules = (r.architecture?.modules || []).join(', ') || 'entry, core, output';
+  return `You are a senior engineer writing a handover doc for a project that was just planned. Read the analysis below and go one level deeper for THIS project only.
+
+Project idea: "${input.idea}"
+Type: ${input.type || '—'} · Audience: ${input.audience || '—'} · Deadline: ${input.deadline || '—'}
+Stack: ${stackLabel}
+Feasibility: ${r.feasibility ? `${r.feasibility.score}/100 — ${r.feasibility.verdict}` : '—'} ${r.feasibility?.estimate ? `(est. ${r.feasibility.estimate})` : ''}
+Architecture shape: ${r.architecture?.shape || '—'}
+Architecture modules: ${modules}
+Research risks: ${(r.research?.risks || []).join(' | ') || '—'}
+First milestone: ${(r.builder?.milestones || []).map(m => `${m.slot || `Week ${m.week}`} — ${m.title}`).join(', ') || '—'}
+
+${jsonShape('deep dive', {
+    moduleNotes: [
+      { name: 'one module name from the list above', note: '2-3 sentences: what it does, the tricky part, and how the stack tooling helps.' },
+      { name: 'another module name', note: '...' },
+      { name: 'another module name', note: '...' },
+      { name: 'another module name', note: '...' },
+    ],
+    extraTests: ['one concrete unit or end-to-end test worth adding', 'one more', 'one more'],
+    pitfalls: ['the most likely mistake for THIS idea, given its risks', 'one more'],
+    nextMoves: ['the single next action after milestone 1', 'one more'],
+  })}
+
+Rules:
+- moduleNotes cover ${modules.length >= 4 ? '4' : 'ALL'} modules from the list ("${modules}"), one entry each; a note MUST mention how to implement it with ${stackLabel}.
+- extraTests are specific and runnable in the chosen stack (name the fixture or function to assert, max 22 words).
+- pitfalls tie to the research risks above, not generic advice.
+- nextMoves are order-safe first steps (max 18 words each) using ${stackLabel} tooling.`;
+}

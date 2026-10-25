@@ -6,6 +6,7 @@ import { runArchitectureAgent } from '../agents/architectureAgent.js';
 import { runTechStackAgent } from '../agents/techStackAgent.js';
 import { runBuilderAgent } from '../agents/builderAgent.js';
 import { runBriefAgent } from '../agents/briefAgent.js';
+import { runDeepDiveAgent } from '../agents/deepDiveAgent.js';
 
 /**
  * THE stage registry — single source of truth for the pipeline.
@@ -81,14 +82,24 @@ export const STAGES = {
     key: 'brief',
     index: 7,
     label: 'Project Brief',
-    nextHint: 'Planning complete — download the scaffold or export the project brief.',
+    nextHint: 'Deep Dive — module-by-module explanations, extra tests, and pitfalls.',
     async run(ctx) {
       return runBriefAgent(ctx);
     },
   },
+
+  deepdive: {
+    key: 'deepdive',
+    index: 8,
+    label: 'Deep Dive',
+    nextHint: 'Planning complete — download the scaffold or export the project brief.',
+    async run(ctx) {
+      return runDeepDiveAgent(ctx);
+    },
+  },
 };
 
-export const STAGE_ORDER = ['github', 'research', 'feasibility', 'architecture', 'stack', 'builder', 'brief'];
+export const STAGE_ORDER = ['github', 'research', 'feasibility', 'architecture', 'stack', 'builder', 'brief', 'deepdive'];
 
 export function stageMeta() {
   return STAGE_ORDER.map(key => ({

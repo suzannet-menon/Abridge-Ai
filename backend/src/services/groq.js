@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from '../utils/fetchTimeout.js';
+
 const API_KEY = process.env.GROQ_API_KEY || '';
 const MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
@@ -28,7 +30,7 @@ export async function runGroqStage(prompt) {
     };
     if (withJsonMode) body.response_format = { type: 'json_object' };
 
-    const res = await fetch(ENDPOINT, {
+    const res = await fetchWithTimeout(ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -65,6 +67,6 @@ export async function runGroqStage(prompt) {
     return { ok: false, data: null, error: `groq HTTP ${first.status}` };
   } catch (err) {
     console.error('[groq] request failed:', err);
-    return { ok: false, data: null, error: 'groq request failed' };
+    return { ok: false, data: null, error: err?.name === 'AbortError' ? 'groq timed out' : 'groq request failed' };
   }
 }
