@@ -289,10 +289,12 @@ Clearing browser data for the site resets everything.
 
 ---
 
-## Team
+## Team — AbridgeAI
 
 - [Suzanne Daniel Thomas](https://github.com/suzannet-menon)
-- [Ruchira Rajesh Jagshettiwar](https://github.com/ruchirajags)
+- [Ishwari Tapkir](https://github.com/ishwaritapkir)
+- [hereisgautam](https://github.com/hereisgautam)
+- [Sumitrathod16](https://github.com/Sumitrathod16)
 
 ## License
 

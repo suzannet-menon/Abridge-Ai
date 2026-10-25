@@ -1,0 +1,79 @@
+# AbridgeAI demo stack.
+#
+#   docker compose up -d            → app + Temporal server + internal Postgres + UI
+#   open http://localhost:8080      → Temporal UI (watch workflows run stage by stage)
+#   open http://localhost:3001      → the app itself
+#   docker compose --profile temporal-worker up -d
+#                                   → additionally runs the Temporal Node worker
+#                                     (the Temporal owner's deliverable: temporal/worker.mjs)
+#   docker compose down -v          → wipe everything; the machine is exactly as before
+#
+# Containment rules:
+# - Temporal's internal Postgres lives inside this stack only. AbridgeAI still
+#   uses NO database — run history stays in the browser, pipeline state in Temporal.
+# - API keys are passed at RUNTIME (env_file), never baked into the image.
+# - The app image is platform-portable; Kubernetes/Managed Endpoints later only
+#   need this same image pushed to a registry.
+
+services:
+  app:
+    build: .
+    ports:
+      - "3001:3001"
+    env_file:
+      - path: .env          # optional at runtime; no keys → honest fallback badges
+        required: false
+    depends_on:
+      - temporal            # ready to talk workflows once the worker exists
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+
+  postgresql:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+      - POSTGRES_DB=temporal
+    volumes:
+      - temporal-pg:/var/lib/postgresql/data
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    depends_on: [postgresql]
+    ports:
+      - "7233:7233" # gRPC — workers and the Node SDK connect here
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgresql
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    depends_on: [temporal]
+    ports:
+      - "8080:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+
+  # The Temporal owner's deliverable. Enabled explicitly with
+  # `docker compose --profile temporal-worker up -d` so the stack is useful
+  # before the worker code lands. The worker connects on TEMPORAL_GRPC and
+  # runs each pipeline stage as a durable Activity.
+  worker:
+    profiles: ["temporal-worker"]
+    build: .
+    command: ["node", "temporal/worker.mjs"]
+    environment:
+      - TEMPORAL_GRPC=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+    depends_on: [temporal]
+    env_file:
+      - path: .env
+        required: false
+
+volumes:
+  temporal-pg:

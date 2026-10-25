@@ -29,6 +29,7 @@ function filePurpose(path) {
     'test_core.py': 'first unit test for the core',
     'core_test.go': 'first unit test for the core',
     '__init__.py': 'package marker',
+    'index.html': 'visual project overview — open it after extracting the zip',
     'README.md': 'idea, why, architecture, stack rationale, dependencies, quick start',
     'PLAN.md': 'feasibility summary + implementation milestones',
     'sample-input.txt': 'sample fixture of the real input this tool must handle',
@@ -308,6 +309,7 @@ ${docs.commands.run}
 - \`src/index\` (or \`main\`) — the CLI entry point.
 - \`test/\` — the first unit tests. Run them before writing anything new.
 - \`${fixturePath}\` — one sample of the input this tool must handle.
+- \`index.html\` — open it: a visual overview of this project's plan, architecture, and milestones.
 - \`PLAN.md\` — feasibility summary, architecture, and milestones.
 
 ---
@@ -467,7 +469,7 @@ function tsStarter(slug, name, desc, p) {
     },
     {
       path: 'test/core.test.ts',
-      content: `import { describe, expect, it } from 'vitest';\nimport { run } from '../src/core.js';\n\ndescribe('core', () => {\n  it('normalizes the raw input', () => {\n    expect(run('  hello  ')).toBe('hello');\n  });\n});\n`,
+      content: `import { describe, expect, it } from 'vitest';\nimport { run } from '../src/core.js';\n\ndescribe('core', () => {\n  it('normalizes the raw input', () => {\n    expect(run('  hello  ')).toBe('hello');\n  });\n\n  it('does not damage already-trimmed input', () => {\n    expect(run('hello')).toBe('hello');\n  });\n\n  it('collapses empty input to an empty result', () => {\n    expect(run('   ')).toBe('');\n  });\n});\n`,
     },
     { path: 'test/fixtures/sample-input.txt', content: fixtureSample() },
     { path: '.gitignore', content: 'node_modules/\ndist/\n*.log\n' },
@@ -478,7 +480,7 @@ function pyStarter(slug, name, desc, p) {
   return [
     {
       path: 'pyproject.toml',
-      content: `[project]\nname = "${slug}"\nversion = "0.1.0"\ndescription = "${desc}"\nrequires-python = ">=3.12"\ndependencies = ["typer>=0.12"]\n\n[project.scripts]\n${slug} = "src.main:cli"\n\n[tool.pytest.ini_options]\naddopts = "-q"\n\n[tool.ruff]\nline-length = 100\n`,
+      content: `[project]\nname = "${slug}"\nversion = "0.1.0"\ndescription = "${desc}"\nrequires-python = ">=3.12"\ndependencies = ["typer>=0.12"]\n\n[project.scripts]\n${slug} = "src.main:cli"\n\n[tool.pytest.ini_options]\naddopts = "-q"\npythonpath = ["."]\n\n[tool.ruff]\nline-length = 100\n`,
     },
     { path: 'src/__init__.py', content: '' },
     {
@@ -512,7 +514,17 @@ def run(input_text: str) -> str:
     },
     {
       path: 'tests/test_core.py',
-      content: `from src.core import run\n\ndef test_normalizes_whitespace():\n    assert run("  x  ") == "x"\n`,
+      content: `from src.core import run
+
+def test_normalizes_whitespace():
+    assert run("  x  ") == "x"
+
+def test_keeps_clean_input_unchanged():
+    assert run("x") == "x"
+
+def test_collapses_blank_input():
+    assert run("   ") == ""
+`,
     },
     { path: 'fixtures/sample-input.txt', content: fixtureSample() },
     { path: '.gitignore', content: '__pycache__/\n.venv/\n*.pyc\n' },
@@ -545,7 +557,7 @@ function goStarter(slug, name, desc, p) {
     },
     {
       path: 'core/core_test.go',
-      content: `package core\n\nimport "testing"\n\nfunc TestRunTrimsWhitespace(t *testing.T) {\n  if got := Run("  x  "); got != "x" {\n    t.Fatalf("Run() = %q, want %q", got, "x")\n  }\n}\n`,
+      content: `package core\n\nimport "testing"\n\nfunc TestRunTrimsWhitespace(t *testing.T) {\n  if got := Run("  x  "); got != "x" {\n    t.Fatalf("Run() = %q, want %q", got, "x")\n  }\n}\n\nfunc TestRunKeepsCleanInput(t *testing.T) {\n  if got := Run("x"); got != "x" {\n    t.Fatalf("Run() = %q, want %q", got, "x")\n  }\n}\n`,
     },
     { path: 'fixtures/sample-input.txt', content: fixtureSample() },
     { path: '.gitignore', content: 'bin/\n*.exe\n' },
@@ -576,11 +588,264 @@ function rustStarter(slug, name, desc, p) {
     },
     {
       path: 'src/core.rs',
-      content: `${header}\npub fn run(input: &str) -> String {\n  // First slice of the planned spine: normalize the raw input.\n  input.trim().to_string()\n}\n\n#[cfg(test)]\nmod tests {\n  use super::*;\n\n  #[test]\n  fn run_trims_whitespace() {\n    assert_eq!(run("  x  "), "x");\n  }\n}\n`,
+      content: `${header}\npub fn run(input: &str) -> String {\n  // First slice of the planned spine: normalize the raw input.\n  input.trim().to_string()\n}\n\n#[cfg(test)]\nmod tests {\n  use super::*;\n\n  #[test]\n  fn run_trims_whitespace() {\n    assert_eq!(run("  x  "), "x");\n  }\n\n  #[test]\n  fn run_keeps_clean_input() {\n    assert_eq!(run("x"), "x");\n  }\n}\n`,
     },
     { path: 'fixtures/sample-input.txt', content: fixtureSample() },
     { path: '.gitignore', content: '/target\n' },
   ];
+}
+
+// ── index.html — a visual, self-contained "understand this project" page ────
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function overviewHtml({ input, ctx, stackKey, slug }) {
+  const r = ctx?.results || {};
+  const feas = r.feasibility || {};
+  const { shape, steps: rawSteps } = archFrom(ctx);
+  const steps = (rawSteps.length ? rawSteps : ['input', 'parse', 'transform', 'output']).slice(0, 7);
+  const modules = Array.isArray(r.architecture?.modules) && r.architecture.modules.length
+    ? r.architecture.modules : ['entry', 'core', 'output'];
+  const principles = Array.isArray(r.architecture?.principles) && r.architecture.principles.length
+    ? r.architecture.principles : ['Keep the core pure and deterministic.', 'Thin adapters around the core.'];
+  const milestones = milestonesFor(ctx, fallbackMilestones(shape));
+  const axes = Array.isArray(feas.axes) ? feas.axes : [];
+  const name = input.name || slug;
+  const idea = input.idea || '—';
+  const typeLabel = PROJECT_TYPES[input.type] || input.type || 'Web app';
+  const stackLabel = stackLabelFor(input, stackKey);
+  const docs = docFor(stackKey, slug);
+  const score = feas.score != null ? Math.max(0, Math.min(100, feas.score)) : null;
+  const tone = feas.verdictClass === 'bad' ? 'bad' : feas.verdictClass === 'warn' ? 'warn' : 'good';
+  const commandRows = [
+    docs.commands.install && ['Install', docs.commands.install],
+    docs.commands.build && ['Build', docs.commands.build],
+    ['Run', docs.commands.run],
+    ['Test', docs.commands.test],
+  ].filter(Boolean);
+
+  const axesHtml = axes.length
+    ? axes.map(a => {
+        const pct = Math.max(0, Math.min(100, (a.value / a.max) * 100));
+        return `<div class="axis"><span class="axis-label">${escapeHtml(a.label)}</span>` +
+          `<span class="axis-track"><span class="axis-fill" style="width:${pct.toFixed(0)}%"></span></span>` +
+          `<span class="axis-val">${a.value}/${a.max}</span></div>`;
+      }).join('\n')
+    : '<p class="muted">Run the full pipeline in AbridgeAI to score the axes.</p>';
+
+  const modulesHtml = modules
+    .map((m, i) => `<div class="module"><span class="module-idx">${i + 1}</span><span>${escapeHtml(m)}</span></div>`)
+    .join('\n');
+
+  const flowHtml = steps
+    .map((s, i) => `<span class="flow-step">${escapeHtml(s)}</span>${i < steps.length - 1 ? '<span class="flow-arrow" aria-hidden="true">→</span>' : ''}`)
+    .join('\n');
+
+  const milestonesHtml = milestones
+    .map((m) => `<div class="milestone"><div class="ms-head"><span class="ms-slot">${escapeHtml(m.slot || `Week ${m.week}`)}</span>` +
+      `<span class="ms-title">${escapeHtml(m.title)}</span></div>` +
+      `<ul class="ms-tasks">${(m.tasks || []).map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` +
+      `<p class="ms-accept">${m.accept ? `<strong>Done when:</strong> ${escapeHtml(m.accept)}` : ''}</p></div>`)
+    .join('\n');
+
+  const commandsHtml = commandRows
+    .map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td><code>${escapeHtml(v)}</code></td></tr>`)
+    .join('\n');
+
+  // Every bundled starter's placeholder core is the same slice: trim() the
+  // input. The demo below mirrors it in plain JS so the page runs standalone,
+  // and tells the builder exactly where to swap in the real transform.
+  const coreEntry = stackKey === 'go' ? 'core.Run()' : stackKey === 'rust' ? 'core::run()' : stackKey === 'python' ? 'src.core.run()' : 'src/core.ts run()';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(name)} — project overview</title>
+<style>
+  :root {
+    --bg: #f6f6f2; --panel: #ffffff; --ink: #171713; --ink-soft: #5c5c54; --ink-faint: #8b8b80;
+    --line: #e4e4dc; --accent: #4f46e5; --good: #166534; --warn: #92500c; --bad: #b91c1c;
+    --radius: 14px; --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.55 "Segoe UI", system-ui, sans-serif; padding: 0 20px 60px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { padding: 42px 0 26px; border-bottom: 1px solid var(--line); }
+  .kicker { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  h1 { font-size: clamp(26px, 4vw, 40px); line-height: 1.15; margin-top: 8px; letter-spacing: -0.02em; }
+  .idea { color: var(--ink-soft); max-width: 64ch; margin-top: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 5px 14px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+  .chip.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+  .chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+  section { margin-top: 34px; }
+  h2 { font-size: 12.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 14px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; }
+  .card h3 { font-size: 15px; margin-bottom: 12px; }
+  .score-row { display: flex; align-items: center; gap: 18px; }
+  .score-num { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; }
+  .score-num.good { color: var(--good); } .score-num.warn { color: var(--warn); } .score-num.bad { color: var(--bad); }
+  .score-sub { color: var(--ink-soft); font-size: 13px; }
+  .axis { display: grid; grid-template-columns: 1fr 88px 46px; gap: 10px; align-items: center; margin-top: 9px; font-size: 12.5px; }
+  .axis-label { color: var(--ink-soft); }
+  .axis-track { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; }
+  .axis-fill { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+  .axis-val { font-family: var(--mono); color: var(--ink-faint); text-align: right; }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .flow-step { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .flow-arrow { color: var(--ink-faint); font-weight: 700; }
+  .module { display: flex; align-items: baseline; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .module:last-child { border-bottom: 0; }
+  .module-idx { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); }
+  ul.ms-tasks { margin: 8px 0 0 18px; color: var(--ink-soft); font-size: 13.5px; }
+  .ms-head { display: flex; align-items: baseline; gap: 10px; }
+  .ms-slot { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; }
+  .ms-title { font-weight: 700; }
+  .ms-accept { color: var(--ink-faint); font-size: 12.5px; margin-top: 6px; }
+  .ul-principles { margin-left: 18px; color: var(--ink-soft); font-size: 13.5px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  tr:last-child th, tr:last-child td { border-bottom: 0; }
+  th { width: 90px; font-weight: 700; color: var(--ink-soft); }
+  code { font-family: var(--mono); font-size: 12.5px; background: var(--bg); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); }
+  .muted { color: var(--ink-faint); font-size: 13px; }
+  .demo textarea { width: 100%; font-family: var(--mono); font-size: 13px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); resize: vertical; }
+  .demo-controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+  .demo button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 9px 18px; font: 700 13.5px "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+  .demo button:hover { filter: brightness(1.08); }
+  .demo pre { margin-top: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-family: var(--mono); font-size: 13px; min-height: 44px; white-space: pre-wrap; }
+  footer { margin-top: 46px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 12.5px; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="kicker">Project overview</p>
+    <h1>${escapeHtml(name)}</h1>
+    <p class="idea">${escapeHtml(idea)}</p>
+    <div class="chips">
+      <span class="chip">${escapeHtml(typeLabel)}</span>
+      <span class="chip">${escapeHtml(stackLabel)}</span>
+      ${score != null ? `<span class="chip ${tone}">Feasibility ${score}/100 · ${escapeHtml(feas.verdict || '')}</span>` : ''}
+      ${feas.estimate ? `<span class="chip">Est. effort · ${escapeHtml(feas.estimate)}</span>` : ''}
+    </div>
+  </header>
+
+  <section>
+    <h2>Live demo — ${escapeHtml('the core, running')}</h2>
+    <div class="card demo">
+      <p class="muted">This page runs the same slice your <code>${escapeHtml(coreEntry)}</code> implements today, in the browser —
+      no install, no server. Type an input and watch the first step of the spine
+      (<code>${escapeHtml(steps[0])} → … → ${escapeHtml(steps[steps.length - 1])}</code>) produce output.</p>
+      <div style="margin-top:12px">
+        <textarea id="demo-input" rows="3" spellcheck="false" aria-label="Demo input">  ${escapeHtml('hello from the draft — trim me!')}  </textarea>
+        <div class="demo-controls">
+          <button id="demo-run" type="button">Run core</button>
+          <span id="demo-status" class="muted">engine() mirrors the placeholder in the core module — replace it as you implement</span>
+        </div>
+        <pre id="demo-output" aria-label="Demo output">…</pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Feasibility</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="score-row">
+          <span class="score-num ${tone}">${score != null ? score : '—'}</span>
+          <span>
+            <div class="score-sub">out of 100</div>
+            <div class="score-sub">${escapeHtml(feas.verdict || 'Run the pipeline for a verdict')}</div>
+          </span>
+        </div>
+        <div style="margin-top:14px">${axesHtml}</div>
+      </div>
+      <div class="card">
+        <h3>Data-flow spine</h3>
+        <div class="flow">
+${flowHtml}
+        </div>
+        <p class="muted" style="margin-top:12px">Keep every step pure and deterministic; adapters stay thin.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Modules</h2>
+    <div class="card">
+${modulesHtml}
+    </div>
+  </section>
+
+  <section>
+    <h2>Milestones</h2>
+    <div class="cards">
+${milestonesHtml}
+    </div>
+  </section>
+
+  <section>
+    <h2>Principles</h2>
+    <div class="card">
+      <ul class="ul-principles">
+${principles.map(p2 => `<li>${escapeHtml(p2)}</li>`).join('\n')}
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Run it</h2>
+    <table>
+${commandsHtml}
+    </table>
+    <p class="muted" style="margin-top:10px">Open <code>README.md</code> for the long version, <code>PLAN.md</code> for the full milestone plan.</p>
+  </section>
+
+  <footer>
+    Generated by <a href="https://github.com/suzannet-menon/AbridgeAI">AbridgeAI</a> — from rough idea to build-ready plan.
+  </footer>
+
+</div>
+<script>
+  // ── Demo engine ──────────────────────────────────────────────────────
+  // Mirrors the placeholder slice shipped in the core module (trim).
+  // Replace this ONE function with the real transform as you implement —
+  // everything else on this page keeps working.
+  function engine(input) {
+    return String(input).trim();
+  }
+
+  var demoInput = document.getElementById('demo-input');
+  var demoRun = document.getElementById('demo-run');
+  var demoOutput = document.getElementById('demo-output');
+  var demoStatus = document.getElementById('demo-status');
+
+  function render() {
+    var raw = demoInput.value;
+    var result = engine(raw);
+    demoOutput.textContent = JSON.stringify(result) +
+      (result === '' ? '   // empty in → empty out' : '');
+    demoStatus.textContent = 'input ' + raw.length + ' chars → output ' + result.length +
+      ' chars · engine() mirrors the placeholder slice';
+  }
+
+  demoRun.addEventListener('click', render);
+  demoInput.addEventListener('input', render);
+  render();
+</script>
+</body>
+</html>
+`;
 }
 
 export function scaffoldFiles(input, slug, ctx) {
@@ -599,8 +864,9 @@ export function scaffoldFiles(input, slug, ctx) {
   const ctxForDocs = { input, ctx, stackKey, slug };
   const plan = { path: 'PLAN.md', content: planMarkdown(ctxForDocs) };
   const readme = { path: 'README.md', content: readmeMarkdown(ctxForDocs) };
+  const overview = { path: 'index.html', content: overviewHtml(ctxForDocs) };
 
-  return [plan, readme, ...starter];
+  return [plan, readme, overview, ...starter];
 }
 
 export function getScaffoldTree(files, rootName) {

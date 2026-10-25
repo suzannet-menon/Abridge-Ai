@@ -14,7 +14,10 @@ Two deliverables:
    module with the plan context as header comments, multiple unit tests,
    `fixtures/sample-input.txt`, tsconfig/pyproject/go.mod/Cargo.toml as
    appropriate, README.md with install/run/test tables, PLAN.md, and
-   `index.html` (visual overview page).
+   `index.html` (a live demo page: below the project overview it runs the
+   core's placeholder slice in-browser — the `engine()` mirrors
+   `src/core.run()` and the page tells the builder to replace it with the
+   real transform).
 
 ## Why the split between AI and deterministic matters
 
