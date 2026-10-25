@@ -16,11 +16,21 @@ import { startJob, pollJob, runPlan, exportBrief } from './api/client.js';
 import {
   readHistory, saveToHistory, deleteFromHistory, clearHistory,
   readDraft, clearDraft, readTheme, writeTheme, getSystemTheme,
-  RECORD_VERSION,
+  readLastWorkflow, saveLastWorkflow, clearLastWorkflow, RECORD_VERSION,
 } from './utils/storage.js';
 import { downloadFile } from './utils/export.js';
+import { watchWorkflow } from './utils/workflow.js';
 
 const STAGE_KEYS = ['github', 'research', 'feasibility', 'architecture', 'stack', 'builder', 'brief', 'deepdive'];
+
+// Maps durable workflow stage vocabulary onto the timeline's own:
+// Temporal emits completed/failed; the app timeline speaks done/error.
+function stageStatuses(stages = {}) {
+  return Object.fromEntries(Object.entries(stages).map(([key, state]) => [
+    key,
+    state === 'completed' ? 'done' : state === 'failed' ? 'error' : state,
+  ]));
+}
 
 function modeBadge(mode) {
   if (mode === 'llm') return 'Gemini · live';
@@ -32,12 +42,13 @@ function modeBadge(mode) {
 }
 
 export default function App() {
-  const [view, setView] = useState('landing');
+  const [savedWorkflow, setSavedWorkflow] = useState(() => readLastWorkflow());
+  const [view, setView] = useState(() => savedWorkflow ? 'overview' : 'landing');
   const [theme, setTheme] = useState(() => readTheme() || getSystemTheme());
   const [history, setHistory] = useState(() => readHistory());
   const [activeId, setActiveId] = useState(null);
   const [currentProject, setCurrentProject] = useState(null);
-  const [running, setRunning] = useState(false);
+  const [running, setRunning] = useState(() => !!savedWorkflow);
   const [toast, setToast] = useState(null);
 
   // Pipeline state
@@ -90,10 +101,88 @@ export default function App() {
     setPipelineState('standby');
   };
 
+  // Adopt a terminal workflow snapshot: paint the UI and persist the record.
+  const adoptResults = useCallback((snapshot, input, workflowId) => {
+    const completed = snapshot.status === 'completed';
+    setResults(snapshot.results || null);
+    setStageErrors(snapshot.errors || {});
+    setStatuses(stageStatuses(snapshot.stages));
+    setPipelineState(completed ? 'complete' : 'failed');
+    setRunning(false);
+
+    if (!completed) {
+      showToast(`Planning workflow ${snapshot.status}.`);
+      return;
+    }
+
+    if (input.idea) {
+      const record = {
+        version: RECORD_VERSION,
+        id: workflowId,
+        workflowId,
+        name: input.name, stack: input.stack, customStack: input.customStack,
+        github: input.github, idea: input.idea, deadline: input.deadline,
+        comfort: input.comfort, type: input.type, team: input.team, audience: input.audience,
+        time: new Date().toLocaleString(),
+        outputs: snapshot.results,
+      };
+      setCurrentProject(record);
+      setActiveId(record.id);
+      if (!readHistory().some(item => item.id === workflowId)) {
+        saveToHistory(record);
+        setHistory(readHistory());
+      }
+      clearDraft();
+      clearLastWorkflow();
+      setSavedWorkflow(null);
+    }
+
+    if (Object.keys(snapshot.errors || {}).length) {
+      showToast('Run finished with stage errors. See the failed stages.');
+    }
+  }, [showToast]);
+
+  // Reconnect to an in-flight run after a page refresh.
+  useEffect(() => {
+    if (!savedWorkflow) return undefined;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      watchWorkflow(savedWorkflow.workflowId, {
+        signal: controller.signal,
+        onProgress(snapshot) {
+          setStatuses(stageStatuses(snapshot.stages));
+          setStageErrors(snapshot.errors || {});
+          if (snapshot.status === 'running') setPipelineState('running');
+        },
+      })
+        .then(snapshot => { adoptResults(snapshot, savedWorkflow.input, savedWorkflow.workflowId); })
+        .catch(err => {
+          if (controller.signal.aborted) return;
+          if (err?.status === 404) {
+            clearLastWorkflow();
+            setSavedWorkflow(null);
+            setRunning(false);
+            setPipelineState('standby');
+            showToast('The previous run is no longer available — start a new project.');
+            return;
+          }
+          console.error(err);
+          setRunning(false);
+          setPipelineState('failed');
+          showToast('Unable to resume the previous run. Try starting a new project.');
+        });
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [adoptResults, savedWorkflow, showToast]);
+
   // ── Pipeline runner ──────────────────────────────────────────
-  // Preferred path: background job with real per-stage progress. If the
-  // job endpoint is unreachable/not available, fall back to the
-  // synchronous run and reveal stages in order.
+  // Preferred path: a durable Temporal workflow started on the backend
+  // (HTTP 202 + workflow id). If Temporal is unreachable, fall back to the
+  // in-process job runner and poll per-stage status the same way.
   const runPipeline = async (input) => {
     if (running) return;
     setRunning(true);
@@ -104,50 +193,45 @@ export default function App() {
     setView('overview');
 
     try {
-      let newResults;
-      let newStageErrors;
-      try {
-        const job = await startJob(input);
-        const finished = await pollJob(job.id, j => {
-          if (j.stages) setStatuses({ ...j.stages });
-        });
-        newResults = finished.results;
-        newStageErrors = finished.errors || {};
-      } catch (jobErr) {
-        // Backend without job support (or a hiccup while starting/polling):
-        // fall back to the one-shot synchronous run with staged reveal.
-        // A genuine timeout must NOT be retried in sync mode.
-        if (jobErr.message.code === 'TIMEOUT' || jobErr.message.includes('timed out')) throw jobErr;
-        ({ results: newResults, errors: newStageErrors } = await runPlan(input));
-        STAGE_KEYS.forEach((key, i) => {
-          setTimeout(() => {
-            setStatuses(prev => ({ ...prev, [key]: newStageErrors?.[key] ? 'error' : 'done' }));
-          }, i * 140);
-        });
-      }
+      const started = await runPlan(input);
+      if (!started?.workflowId) throw new Error('Unexpected /api/plan response: missing workflowId.');
+      const workflow = { workflowId: started.workflowId, input };
+      saveLastWorkflow(workflow);
+      // Hand polling over to the reconnect effect above so there is exactly
+      // one watcher, which also survives a page refresh mid-run.
+      setSavedWorkflow(workflow);
+    } catch (workflowErr) {
+      console.error(workflowErr);
+    }
 
-      setResults(newResults);
-      setStageErrors(newStageErrors || {});
+    // Fallback: in-process background job on the plain backend.
+    try {
+      const job = await startJob(input);
+      const finished = await pollJob(job.id, j => {
+        if (j.stages) setStatuses({ ...j.stages });
+      });
+      setResults(finished.results);
+      setStageErrors(finished.errors || {});
       setStatuses(prev => {
         const next = { ...prev };
         STAGE_KEYS.forEach(key => {
-          next[key] = newStageErrors?.[key] ? 'error' : (next[key] === 'queued' ? 'done' : next[key]);
+          next[key] = finished.errors?.[key] ? 'error' : (next[key] === 'queued' ? 'done' : next[key]);
         });
         return next;
       });
       setPipelineState('complete');
-      setResults(newResults);
+      clearLastWorkflow();
+      setSavedWorkflow(null);
 
-      // Save to history
       if (input.idea) {
         const record = {
           version: RECORD_VERSION,
-          id: Date.now().toString(36),
+          id: job.id,
           name: input.name, stack: input.stack, customStack: input.customStack,
           github: input.github, idea: input.idea, deadline: input.deadline,
           comfort: input.comfort, type: input.type, team: input.team, audience: input.audience,
           time: new Date().toLocaleString(),
-          outputs: newResults,
+          outputs: finished.results,
         };
         setCurrentProject(record);
         setActiveId(record.id);
@@ -155,12 +239,12 @@ export default function App() {
         setHistory(readHistory());
         clearDraft();
       }
-    } catch (err) {
-      console.error(err);
-      showToast('Something went wrong — please try again.');
-      resetPipeline();
-    } finally {
+    } catch (jobErr) {
+      console.error(jobErr);
       setRunning(false);
+      setPipelineState('failed');
+      showToast('Planning run failed. Check the backend (and the Temporal server when using it).');
+      resetPipeline();
     }
   };
 
@@ -232,8 +316,8 @@ export default function App() {
   })();
 
   // ── Status line ──────────────────────────────────────────────
-  const statusText = running ? 'running pipeline…' : pipelineState === 'complete' ? `complete · ${currentProject?.time || ''}` : 'idle';
-  const statusState = running ? 'running' : pipelineState === 'complete' ? 'done' : 'idle';
+  const statusText = running ? 'running pipeline…' : pipelineState === 'complete' ? `complete · ${currentProject?.time || ''}` : pipelineState === 'failed' ? 'run failed' : 'idle';
+  const statusState = running ? 'running' : pipelineState === 'complete' ? 'done' : pipelineState === 'failed' ? 'failed' : 'idle';
 
   if (view === 'landing') {
     return <Landing onEnter={handleEnterFromLanding} />;
@@ -310,29 +394,40 @@ export default function App() {
                 <span id="status-text">{statusText}</span>
               </p>
 
+              {Object.keys(stageErrors).length > 0 && (
+                <section className="pipeline-errors" role="alert">
+                  <h2>Planning stage errors</h2>
+                  <ul>
+                    {Object.entries(stageErrors).map(([stage, message]) => (
+                      <li key={stage}><strong>{stage}:</strong> {message}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+
               {results && (
                 <section className="outputs-section" id="outputs-panel">
                   <div className="outputs-head">
                     <h2>Planning results</h2>
                   </div>
                   <div className="outputs" id="outputs">
-                    <OutputCard index={1} title="Builder Signals (GitHub Analysis)" agent="github"
+                    {results.github && <OutputCard index={1} title="Builder Signals (GitHub Analysis)" agent="github"
                       body={results.github.text} badge={results.github.badge}
-                      copyable={results.github.text} onToast={showToast} />
-                    <OutputCard index={2} title="Research & Opportunity Analysis" agent="research"
+                      copyable={results.github.text} onToast={showToast} />}
+                    {results.research && <OutputCard index={2} title="Research & Opportunity Analysis" agent="research"
                       body={results.research?.text ?? results.research} copyable={results.research?.text ?? results.research}
-                      badge={modeBadge(results.research?.mode)} onToast={showToast} />
-                    <FeasibilityCard feasibility={results.feasibility} onToast={showToast} />
-                    <OutputCard index={4} title="Architecture Direction" agent="architecture"
+                      badge={modeBadge(results.research?.mode)} onToast={showToast} />}
+                    {results.feasibility && <FeasibilityCard feasibility={results.feasibility} onToast={showToast} />}
+                    {results.architecture && <OutputCard index={4} title="Architecture Direction" agent="architecture"
                       body={results.architecture?.text ?? results.architecture} copyable={results.architecture?.text ?? results.architecture}
-                      badge={modeBadge(results.architecture?.mode)} onToast={showToast} />
-                    <OutputCard index={5} title="Tech Stack Recommendation" agent="stack"
-                      body={results.stack?.text ?? results.stack} copyable={results.stack?.text ?? results.stack} onToast={showToast} />
-                    <BuilderCard builder={results.builder} onToast={showToast} />
-                    <BriefCard brief={results.brief} onToast={showToast} />
-                    <OutputCard index={8} title="Deep Dive (module notes · extra tests)" agent="deepdive"
+                      badge={modeBadge(results.architecture?.mode)} onToast={showToast} />}
+                    {results.stack && <OutputCard index={5} title="Tech Stack Recommendation" agent="stack"
+                      body={results.stack?.text ?? results.stack} copyable={results.stack?.text ?? results.stack} onToast={showToast} />}
+                    {results.builder && <BuilderCard builder={results.builder} onToast={showToast} />}
+                    {results.brief && <BriefCard brief={results.brief} onToast={showToast} />}
+                    {results.deepdive && <OutputCard index={8} title="Deep Dive (module notes · extra tests)" agent="deepdive"
                       body={results.deepdive?.text} copyable={results.deepdive?.text}
-                      badge={modeBadge(results.deepdive?.mode)} onToast={showToast} />
+                      badge={modeBadge(results.deepdive?.mode)} onToast={showToast} />}
                   </div>
                 </section>
               )}

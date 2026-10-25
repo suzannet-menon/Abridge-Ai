@@ -1,12 +1,19 @@
 import express from 'express';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runPipeline } from './src/pipeline/runPipeline.js';
 import { stageMeta } from './src/pipeline/stages.js';
 import { startPipelineJob, getPipelineJob } from './src/jobs.js';
 import { STACKS } from './src/domain/stacks.js';
 import { PROJECT_TYPES, TEAM_SIZES } from './src/domain/types.js';
 import { buildBriefMarkdown } from './src/export/markdown.js';
+import { getTemporalClient } from './src/temporal/client.js';
+import { TEMPORAL_TASK_QUEUE } from './src/temporal/config.js';
+import {
+  PLAN_PROGRESS_QUERY,
+  PLAN_WORKFLOW_TYPE,
+  WORKFLOW_EXECUTION_TIMEOUT,
+} from './src/temporal/workflowConstants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(__dirname, '../dist');
@@ -40,7 +47,7 @@ function isRateLimited(ip) {
  *  - a long-lived local server  → node backend/server.js
  *  - a Vercel serverless function → api/index.js (imports this)
  */
-export function createApp() {
+export function createApp({ temporalClientFactory = getTemporalClient } = {}) {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
 
@@ -68,12 +75,43 @@ export function createApp() {
     }
     try {
       const input = req.body || {};
-      const { results, errors } = await runPipeline(input);
-      if (Object.keys(errors).length) console.warn('[api/plan] stage errors:', errors);
-      res.json({ ok: true, results, errors });
+      const client = await temporalClientFactory();
+      const workflowId = `abridgeai-${randomUUID()}`;
+      await client.workflow.start(PLAN_WORKFLOW_TYPE, {
+        workflowId,
+        taskQueue: TEMPORAL_TASK_QUEUE,
+        workflowExecutionTimeout: WORKFLOW_EXECUTION_TIMEOUT,
+        args: [input],
+      });
+      res.status(202).json({ ok: true, workflowId, status: 'running' });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ ok: false, error: 'Pipeline failed. Please try again.' });
+      console.error('[api/plan] failed to start Temporal workflow:', err);
+      res.status(503).json({ ok: false, error: 'Unable to start the planning workflow. Check Temporal connectivity.' });
+    }
+  });
+
+  app.get('/api/workflows/:workflowId', async (req, res) => {
+    try {
+      const client = await temporalClientFactory();
+      const handle = client.workflow.getHandle(req.params.workflowId);
+      const [description, progress] = await Promise.all([
+        handle.describe(),
+        handle.query(PLAN_PROGRESS_QUERY),
+      ]);
+      res.json({
+        ok: true,
+        workflowId: req.params.workflowId,
+        status: description.status.name.toLowerCase(),
+        stages: progress.stages,
+        results: progress.results,
+        errors: progress.errors,
+      });
+    } catch (err) {
+      if (err?.name === 'WorkflowNotFoundError') {
+        return res.status(404).json({ ok: false, error: 'Workflow not found.' });
+      }
+      console.error('[api/workflows] failed to retrieve workflow status:', err);
+      res.status(503).json({ ok: false, error: 'Unable to retrieve workflow status. Check Temporal connectivity.' });
     }
   });
 

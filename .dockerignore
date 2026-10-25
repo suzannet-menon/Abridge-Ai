@@ -8,9 +8,11 @@
 .vercelignore
 node_modules
 backend/node_modules
+backend/test
 dist
 learnings
 tests
+hackday-integration-plan.md
 *.log
 docker-compose.yml
 Dockerfile

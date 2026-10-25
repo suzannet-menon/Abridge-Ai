@@ -1,6 +1,7 @@
 const HISTORY_KEY = 'abridgeai.history.v1';
 const DRAFT_KEY = 'abridgeai.draft.v1';
 const THEME_KEY = 'abridgeai.theme.v1';
+const LAST_WORKFLOW_KEY = 'abridgeai.last-workflow.v1';
 
 // ── Record versioning ────────────────────────────────────────────────────────
 // Bump this when the saved-record schema gains new required fields.
@@ -76,6 +77,24 @@ export function deleteFromHistory(id) {
 
 export function clearHistory() {
   writeHistory([]);
+}
+
+export function readLastWorkflow() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAST_WORKFLOW_KEY));
+    return saved?.workflowId && saved?.input ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastWorkflow(workflow) {
+  try { localStorage.setItem(LAST_WORKFLOW_KEY, JSON.stringify(workflow)); }
+  catch { /* ignore */ }
+}
+export function clearLastWorkflow() {
+  try { localStorage.removeItem(LAST_WORKFLOW_KEY); }
+  catch { /* ignore */ }
 }
 
 // ── Draft autosave ───────────────────────────────────────────────────────────

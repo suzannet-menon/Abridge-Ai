@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       // Forward API calls to the Node backend during development.
-      '/api': 'http://localhost:3001',
+      '/api': process.env.ABRIDGEAI_API_PROXY || 'http://localhost:3001',
     },
   },
 })

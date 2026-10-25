@@ -326,6 +326,8 @@ h1 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spac
 .tl-row.is-done:not(:last-child)::before { background: var(--lime-ink); }
 .tl-row.is-running .tl-node { border-color: var(--lime); background: var(--card-bg); }
 .tl-row.is-running .tl-node .tl-pulse-ring { animation: tl-ring 1.5s ease-out infinite; }
+.tl-row.is-failed .tl-node { border-color: var(--danger); }
+.tl-row.is-failed .tl-status { color: var(--danger); }
 
 .tl-row.is-error .tl-node { background: var(--danger); border-color: var(--danger); }
 .tl-row.is-error:not(:last-child)::before { background: var(--danger); }
@@ -333,11 +335,21 @@ h1 { font-family: var(--display); font-weight: 700; font-size: 26px; letter-spac
 .tl-row.is-error .tl-status { color: var(--danger); cursor: help; }
 
 .tl-name { font-size: 13.5px; font-weight: 600; color: var(--ink-soft); flex: 1; }
-.tl-row.is-done .tl-name, .tl-row.is-running .tl-name { color: var(--ink); }
+.tl-row.is-done .tl-name, .tl-row.is-running .tl-name, .tl-row.is-failed .tl-name { color: var(--ink); }
 
 .tl-status { font-family: var(--mono); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); }
 .tl-row.is-done .tl-status { color: var(--lime-ink); }
 .tl-row.is-running .tl-status { color: var(--ink); }
+
+.pipeline-errors {
+  margin: 16px 0;
+  padding: 14px 18px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+}
+.pipeline-errors h2 { margin: 0 0 8px; font-size: 13px; }
+.pipeline-errors ul { margin: 0; padding-left: 20px; }
 
 @keyframes tl-ring {
   0% { transform: scale(0.7); opacity: 0.9; }

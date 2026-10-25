@@ -5,7 +5,7 @@
 #   open http://localhost:3001      → the app itself
 #   docker compose --profile temporal-worker up -d
 #                                   → additionally runs the Temporal Node worker
-#                                     (the Temporal owner's deliverable: temporal/worker.mjs)
+#                                     (the Temporal owner's deliverable: backend/worker.js)
 #   docker compose down -v          → wipe everything; the machine is exactly as before
 #
 # Containment rules:
@@ -61,14 +61,14 @@ services:
 
   # The Temporal owner's deliverable. Enabled explicitly with
   # `docker compose --profile temporal-worker up -d` so the stack is useful
-  # before the worker code lands. The worker connects on TEMPORAL_GRPC and
+  # before the worker code lands. The worker connects on TEMPORAL_ADDRESS and
   # runs each pipeline stage as a durable Activity.
   worker:
     profiles: ["temporal-worker"]
     build: .
-    command: ["node", "temporal/worker.mjs"]
+    command: ["node", "backend/worker.js"]
     environment:
-      - TEMPORAL_GRPC=temporal:7233
+      - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_NAMESPACE=default
     depends_on: [temporal]
     env_file:

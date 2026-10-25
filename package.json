@@ -11,6 +11,10 @@
     "preview": "vite preview",
     "server": "node --env-file-if-exists=.env backend/server.js",
     "dev:api": "node --watch --env-file-if-exists=.env backend/server.js",
+    "worker": "node --env-file-if-exists=.env backend/worker.js",
+    "dev:worker": "node --watch --env-file-if-exists=.env backend/worker.js",
+    "temporal:dev": "temporal server start-dev --ip 127.0.0.1",
+    "test:backend": "npm --prefix backend test",
     "start": "npm run build && node --env-file-if-exists=.env backend/server.js"
   },
   "dependencies": {

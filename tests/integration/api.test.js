@@ -10,8 +10,9 @@ import { STAGE_ORDER } from '../../backend/src/pipeline/stages.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function startServer() {
-  const server = http.createServer(createApp());
+async function startServer(temporalClientFactory) {
+  const app = createApp(temporalClientFactory ? { temporalClientFactory } : {});
+  const server = http.createServer(app);
   await new Promise(r => server.listen(0, r));
   const port = server.address().port;
   const base = `http://127.0.0.1:${port}`;
@@ -41,14 +42,47 @@ test('health + meta expose the single source of truth', async () => {
   } finally { close(); }
 });
 
-test('POST /api/plan returns a full run of results', async () => {
-  const { call, close } = await startServer();
+test('POST /api/plan starts a durable workflow and returns its id at once', async () => {
+  let started;
+  const fakeClient = {
+    workflow: { start: async (type, options) => { started = { type, options }; } },
+  };
+  const { call, close } = await startServer(async () => fakeClient);
   try {
     const res = await call('POST', '/api/plan', { name: 'api test', idea: 'cli note taker', stack: 'python' });
+    assert.equal(res.status, 202);
+    assert.equal(res.data.ok, true);
+    assert.equal(res.data.status, 'running');
+    assert.match(res.data.workflowId, /^abridgeai-/);
+    assert.equal(started.options.taskQueue, 'abridgeai-planning');
+  } finally { close(); }
+});
+
+test('POST /api/plan reports 503 when Temporal is unreachable', async () => {
+  const { call, close } = await startServer(async () => { throw new Error('offline'); });
+  try {
+    const res = await call('POST', '/api/plan', { name: 'api test', idea: 'cli note taker' });
+    assert.equal(res.status, 503);
+    assert.equal(res.data.ok, false);
+  } finally { close(); }
+});
+
+test('GET /api/workflows/:id surfaces durable progress and results', async () => {
+  const fakeClient = {
+    workflow: {
+      getHandle: () => ({
+        describe: async () => ({ status: { name: 'RUNNING' } }),
+        query: async () => ({ stages: { github: 'completed', research: 'running' }, results: { github: { text: 'x' } }, errors: {} }),
+      }),
+    },
+  };
+  const { call, close } = await startServer(async () => fakeClient);
+  try {
+    const res = await call('GET', '/api/workflows/abridgeai-test-id');
     assert.equal(res.status, 200);
     assert.equal(res.data.ok, true);
-    for (const key of STAGE_ORDER) assert.ok(res.data.results[key], `missing ${key}`);
-    assert.equal(res.data.results.feasibility.score >= 0, true);
+    assert.equal(res.data.status, 'running');
+    assert.ok(res.data.stages.github === 'completed');
   } finally { close(); }
 });
 
@@ -77,7 +111,8 @@ test('POST /api/jobs + GET job polls to a complete run', async () => {
 });
 
 test('rate limiter returns 429 past the per-minute cap', async () => {
-  const { call, close } = await startServer();
+  const factoryFriendly = async () => ({ workflow: { start: async () => {} } });
+  const { call, close } = await startServer(factoryFriendly);
   try {
     const statuses = [];
     for (let i = 0; i < 8; i++) {
@@ -87,6 +122,6 @@ test('rate limiter returns 429 past the per-minute cap', async () => {
     // Prior tests in the same process share the limiter bucket, so exact
     // counts vary — what must hold: the cap exists AND some runs succeed.
     assert.ok(statuses.includes(429), `expected a 429 within 8 rapid runs, got ${statuses.join(',')}`);
-    assert.ok(statuses.filter(s => s === 200).length >= 3, 'several runs allowed before the cap');
+    assert.ok(statuses.filter(s => s === 202).length >= 3, 'several runs allowed before the cap');
   } finally { close(); }
 });

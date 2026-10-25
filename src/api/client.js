@@ -20,14 +20,14 @@ export async function getMeta() {
   return data;
 }
 
-/** Run the full planning pipeline on the backend (synchronous fallback). Returns { results, errors }. */
+/** Start a durable planning workflow. Resolves { workflowId } on success (HTTP 202). */
 export function runPlan(input) {
   return post('/api/plan', input);
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/** Start a background pipeline run. Resolves { id, stages } or throws. */
+/** Start an in-process background pipeline run. Resolves { id, stages } or throws. */
 export async function startJob(input) {
   const data = await post('/api/jobs', input);
   return data.job;
@@ -50,6 +50,18 @@ export async function pollJob(jobId, onStage, { timeoutMs = 95_000, intervalMs =
     if (Date.now() > deadline) throw new Error('Pipeline run timed out.');
     await sleep(intervalMs);
   }
+}
+
+/** Retrieve durable workflow status and its latest stage results. */
+export async function getWorkflowStatus(workflowId, { signal } = {}) {
+  const res = await fetch(`/api/workflows/${encodeURIComponent(workflowId)}`, { signal });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.ok) {
+    const error = new Error(data?.error || 'Workflow status request failed.');
+    error.status = res.status;
+    throw error;
+  }
+  return data;
 }
 
 /** Ask the backend to render a saved record as a downloadable markdown brief. */
